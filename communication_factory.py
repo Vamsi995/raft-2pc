@@ -2,6 +2,8 @@ from __future__ import annotations
 import threading
 import logging
 import time
+from election.timeout_manager import TimeoutManager
+from election.state_manager import StateManager, State
 
 class CommunicationFactory:
 
@@ -17,7 +19,7 @@ class CommunicationFactory:
         # logging.info(f"[Event - Broadcast - {message_type}] - [Clock - {lamport_clock.logical_time}] - [Sent from Client {lamport_clock.proc_id}]")
 
 
-    def receive(self, server, client_limit, internal_state):
+    def receive(self, server, client_limit, internal_state, timeout_manager):
         while True:
             # Accept Connection
             client, address = server.accept()
@@ -25,19 +27,27 @@ class CommunicationFactory:
             self.CLIENTS.append(client)
 
             # Start Handling Thread For Client
-            thread = threading.Thread(target=self.handle, args=(client, internal_state))
+            thread = threading.Thread(target=self.handle, args=(client, internal_state, timeout_manager))
             thread.start()
 
             if len(self.CLIENTS) == client_limit:
                 break
 
 
-    def handle(self, client, internal_state):
+    def handle(self, client, internal_state: StateManager, timeout_manager: TimeoutManager):
+
+        if internal_state.state == State.FOLLOWER:
+            timeout_manager.reset_election_timer()
+
         while True:
             try:
                 # Broadcasting Messages
                 message = client.recv(4096).decode("utf-8")
                 message, piggy_back_obj = message.split("|")
+
+                if internal_state.state == State.FOLLOWER:
+                    if message == "HEARTBEAT":
+                        timeout_manager.reset_election_timer()
 
                 # if message == "REQUEST":
                 #     attached_clock = txt_to_object(piggy_back_obj)

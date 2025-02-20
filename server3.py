@@ -3,7 +3,7 @@ import argparse
 import threading
 import logging
 from communication_factory import CommunicationFactory
-from state_manager import StateManager
+from election.state_manager import StateManager
 from data_manager import DataManager
 
 def run_server(args):

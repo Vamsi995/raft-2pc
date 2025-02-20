@@ -2,8 +2,9 @@ import socket
 import argparse
 import logging
 from communication_factory import CommunicationFactory
-from state_manager import StateManager
+from election.state_manager import StateManager
 from data_manager import DataManager
+from election.timeout_manager import TimeoutManager
 
 
 def run_server(args):
@@ -22,7 +23,7 @@ def run_server(args):
 
     timeout_manager = TimeoutManager()
 
-    comm_factory.receive(server, limit, internal_state)
+    comm_factory.receive(server, limit, internal_state, timeout_manager)
 
     
     # Start Timeouts -> needs to keep happening in a loop

@@ -1,7 +1,7 @@
 import socket
 import argparse
 import threading
-from state_manager import StateManager
+from election.state_manager import StateManager
 from communication_factory import CommunicationFactory
 import logging
 from data_manager import DataManager
