@@ -4,6 +4,9 @@ import logging
 import time
 from election.timeout_manager import TimeoutManager
 from election.state_manager import StateManager, State
+from utils import txt_to_object, object_to_txt
+from data.models.request_vote import RequestVote
+from data.models.reply_vote import ReplyVote
 
 class CommunicationFactory:
 
@@ -11,7 +14,7 @@ class CommunicationFactory:
     CLIENTS = []
 
 
-    def broadcast(self, message, lamport_clock: LamportClock, message_type: str):
+    def broadcast(self, message):
         # time.sleep(3)
         for client in self.CLIENTS:
             client.send(bytes(message, "utf-8"))
@@ -19,7 +22,7 @@ class CommunicationFactory:
         # logging.info(f"[Event - Broadcast - {message_type}] - [Clock - {lamport_clock.logical_time}] - [Sent from Client {lamport_clock.proc_id}]")
 
 
-    def receive(self, server, client_limit, internal_state, timeout_manager):
+    def receive(self, server, client_limit, election_manager):
         while True:
             # Accept Connection
             client, address = server.accept()
@@ -27,17 +30,20 @@ class CommunicationFactory:
             self.CLIENTS.append(client)
 
             # Start Handling Thread For Client
-            thread = threading.Thread(target=self.handle, args=(client, internal_state, timeout_manager))
+            thread = threading.Thread(target=self.handle, args=(client, election_manager))
             thread.start()
 
             if len(self.CLIENTS) == client_limit:
                 break
 
 
-    def handle(self, client, internal_state: StateManager, timeout_manager: TimeoutManager):
+    def handle(self, client, election_manager):
 
-        if internal_state.state == State.FOLLOWER:
-            timeout_manager.reset_election_timer()
+        # If term > currentTerm, currentTerm ← term
+        # (step down if leader or candidate)
+        # 2. If term == currentTerm, votedFor is null or candidateId,
+        # and candidate's log is at least as complete as local log,
+        # grant vote and reset election timeout
 
         while True:
             try:
@@ -45,9 +51,43 @@ class CommunicationFactory:
                 message = client.recv(4096).decode("utf-8")
                 message, piggy_back_obj = message.split("|")
 
-                if internal_state.state == State.FOLLOWER:
+                if message == "REPLY_VOTE":
+                    reply_vote: ReplyVote = txt_to_object(piggy_back_obj)
+                    election_manager.comm_factory.REPLIES.append(reply_vote.vote)
+                    
+
+                if election_manager.state_manager.internal_state.state == State.FOLLOWER:
                     if message == "HEARTBEAT":
-                        timeout_manager.reset_election_timer()
+                        election_manager.reset_election_timer()
+                    elif message == "REQUEST_VOTE":
+                        request_vote: RequestVote = txt_to_object(piggy_back_obj)
+                        if request_vote.term > election_manager.state_manager.currentTerm:
+                            election_manager.state_manager.currentTerm = request_vote.term
+                        
+                        if request_vote.term == election_manager.state_manager.currentTerm and (election_manager.state_manager.voted_for == None or election_manager.state_manager.voted_for == election_manager.state_manager.candidate_id):
+                            if request_vote.last_log_term < election_manager.state_manager.last_log_term:
+                                # deny vote
+                                reply = "REPLY_VOTE" + "|" + object_to_txt(ReplyVote(False, election_manager.state_manager.currentTerm))
+                                client.send(bytes(reply, "utf-8"))
+                            elif request_vote.last_log_term > election_manager.state_manager.last_log_term:
+                                # vote granted
+                                reply = "REPLY_VOTE" + "|" + object_to_txt(ReplyVote(True, election_manager.state_manager.currentTerm))
+                                client.send(bytes(reply, "utf-8"))
+                            else:
+                                if request_vote.last_log_ind < election_manager.state_manager.last_log_ind:
+                                    # deny vote
+                                    reply = "REPLY_VOTE" + "|" + object_to_txt(ReplyVote(False, election_manager.state_manager.currentTerm))
+                                    client.send(bytes(reply, "utf-8"))
+                                else:
+                                    # grant vote
+                                    reply = "REPLY_VOTE" + "|" + object_to_txt(ReplyVote(True, election_manager.state_manager.currentTerm))
+                                    client.send(bytes(reply, "utf-8"))
+                                    
+                
+
+                elif election_manager.state_manager.internal_state.state == State.CANDIDATE:
+                    if message == "REQUEST_VOTE":
+                         
 
                 # if message == "REQUEST":
                 #     attached_clock = txt_to_object(piggy_back_obj)
