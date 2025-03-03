@@ -36,7 +36,7 @@ def handle_append_entries(append_entries_queue):
 
         while len(append_entries_queue) != 0:
 
-            message, client, main_client, election_manager, piggy_back_obj = append_entries_queue[0]
+            message, client, election_manager, piggy_back_obj = append_entries_queue[0]
 
             append_entries: AppendEntries = txt_to_object(piggy_back_obj)
 
@@ -62,7 +62,7 @@ def handle_append_entries(append_entries_queue):
                     election_manager.state_manager.lock_table[y] = append_entries.transaction.client_id
 
             if current_term > append_entries.term:
-                client.send(bytes(f"RELAY@{append_entries.leader_id}#{"APPEND_REPLY|"}{object_to_txt(AppendEntriesReply(current_term, False, candidate_id, append_entries))}|@", "utf-8"))
+                client.send(bytes(f"RELAY@{append_entries.leader_id}#{"APPEND_REPLY|"}{object_to_txt(AppendEntriesReply(current_term, False, candidate_id, append_entries, transaction=append_entries.transaction))}|@", "utf-8"))
                 # DPrintf("Error, Peer, I : %d DONOT write to log from master: %d, I HAVE BIG TERM MISMATCH: %d \n", rf.me, args.LeaderId, reply.Term)
                 print("Error 1")
                 continue
@@ -81,7 +81,7 @@ def handle_append_entries(append_entries_queue):
             last_log_ind, last_log_term = election_manager.state_manager.get_last_log_index_term()
 
             if append_entries.prev_log_ind > last_log_ind:
-                client.send(bytes(f"RELAY@{append_entries.leader_id}#{"APPEND_REPLY|"}{object_to_txt(AppendEntriesReply(current_term, False, candidate_id, append_entries, conflict_ind=last_log_ind + 1))}|@", "utf-8"))
+                client.send(bytes(f"RELAY@{append_entries.leader_id}#{"APPEND_REPLY|"}{object_to_txt(AppendEntriesReply(current_term, False, candidate_id, append_entries, conflict_ind=last_log_ind + 1, transaction=append_entries.transaction))}|@", "utf-8"))
                 print("Error 2")
 
                 continue
@@ -93,7 +93,7 @@ def handle_append_entries(append_entries_queue):
                 conflict_index = append_entries.prev_log_ind
                 while conflict_index > 0 and log_entries[conflict_index - 1].term == conflict_term:
                     conflict_index -= 1
-                client.send(bytes(f"RELAY@{append_entries.leader_id}#{"APPEND_REPLY|"}{object_to_txt(AppendEntriesReply(current_term, False, candidate_id, append_entries, conflict_ind=conflict_index, conflict_term=conflict_term))}|@", "utf-8"))                    
+                client.send(bytes(f"RELAY@{append_entries.leader_id}#{"APPEND_REPLY|"}{object_to_txt(AppendEntriesReply(current_term, False, candidate_id, append_entries, conflict_ind=conflict_index, conflict_term=conflict_term, transaction=append_entries.transaction))}|@", "utf-8"))                    
                 print("Error 3")
                 
                 continue
@@ -118,7 +118,7 @@ def handle_append_entries(append_entries_queue):
                 election_manager.state_manager.persist()
                 election_manager.state_manager.apply_committed_entries()
             
-            client.send(bytes(f"RELAY@{append_entries.leader_id}#{"APPEND_REPLY|"}{object_to_txt(AppendEntriesReply(current_term, True, candidate_id, append_entries))}|@", "utf-8"))                    
+            client.send(bytes(f"RELAY@{append_entries.leader_id}#{"APPEND_REPLY|"}{object_to_txt(AppendEntriesReply(current_term, True, candidate_id, append_entries, transaction=append_entries.transaction))}|@", "utf-8"))                    
 
 
 
@@ -131,9 +131,25 @@ def handle_argument(request_queue, append_entries_queue):
 
         while len(request_queue) != 0:
 
-            message, client, main_client, election_manager, piggy_back_obj = request_queue[0]
+            message, client, election_manager, piggy_back_obj = request_queue[0]
 
-            if message == "REQUEST_VOTE":
+
+
+            if message == "CLIENT":
+                print("Received client message")
+
+                if election_manager.leader_id == None:
+                    pass 
+                    # what to do when there is no leader
+                
+                if election_manager.leader_id != election_manager.state_manager.candidate_id:
+                    new_message = f"CLIENT|{piggy_back_obj}"
+                    election_manager.send_to(new_message, election_manager.leader_id)
+                    request_queue.popleft()
+                    continue
+                # client_queue.append([election_manager, piggy_back_obj])
+
+            elif message == "REQUEST_VOTE":
                 request_vote: RequestVote = txt_to_object(piggy_back_obj)
                 current_term = election_manager.state_manager.current_term
                 voted_for = election_manager.state_manager.voted_for
@@ -194,7 +210,7 @@ def handle_argument(request_queue, append_entries_queue):
                 append_entries: AppendEntries = txt_to_object(piggy_back_obj)
 
                 if append_entries.transaction != None:
-                    append_entries_queue.append([message, client, main_client, election_manager, piggy_back_obj])
+                    append_entries_queue.append([message, client, election_manager, piggy_back_obj])
                 else:
 
                 # if len(append_entries.log_entires) == 0:
@@ -280,7 +296,7 @@ def handle_argument(request_queue, append_entries_queue):
 
             request_queue.popleft()
 
-def handle(client, election_manager: ElectionManager, request_queue, main_client):
+def handle(client, election_manager: ElectionManager, request_queue):
 
     # If term > currentTerm, currentTerm ← term
     # (step down if leader or candidate)
@@ -300,7 +316,7 @@ def handle(client, election_manager: ElectionManager, request_queue, main_client
             while i < len(message_split):
                     if i + 1 > len(message_split) - 1:
                         break
-                    request_queue.append([message_split[i], client, main_client, election_manager, message_split[i + 1]])
+                    request_queue.append([message_split[i], client, election_manager, message_split[i + 1]])
                     i += 2
 
 
@@ -363,19 +379,19 @@ def run_server(args):
     clientsocket1.send(bytes(f"INIT@{args.candidate_id}@", "utf-8"))
 
 
-    clientsocket2 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    clientsocket2.connect((host, 8081))
-    clientsocket2.send(bytes(f"INIT@{args.candidate_id}@", "utf-8"))
+    # clientsocket2 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    # clientsocket2.connect((host, 8081))
+    # clientsocket2.send(bytes(f"INIT@{args.candidate_id}@", "utf-8"))
 
 
 
     internal_state = StateManager(args.candidate_id, args.cluster)
     election_manager = ElectionManager(internal_state, clientsocket1)
-    thread = threading.Thread(target=handle, args=(clientsocket1, election_manager, request_queue, clientsocket2))
+    thread = threading.Thread(target=handle, args=(clientsocket1, election_manager, request_queue))
     thread.start()
 
-    thread = threading.Thread(target=handle_client, args=(clientsocket2, election_manager, ))
-    thread.start()
+    # thread = threading.Thread(target=handle_client, args=(clientsocket1, election_manager, ))
+    # thread.start()
     # comm_factory = CommunicationFactory()
     # internal_state = StateManager()
     # data_manager = DataManager(args.cluster)

@@ -142,18 +142,37 @@ class Transaction:
     def from_dict(cls, dict_obj):
         return cls(dict_obj['x'], dict_obj['y'], dict_obj['amount'], dict_obj['client_id'])
 
+
+def handle(client):
+    
+    while True:
+        message = client.recv(6000).decode("utf-8")
+            # message, piggy_back_obj = message.split("|")
+
+        if message == "Success":
+            print(message)
+            break
+        else:
+            print("Abort!")
+            break
+        # message_split = message.split("|")
+
+
+
 if __name__ == "__main__":
 
-    comm_manager: ClientManager = ClientManager()
-    comm_manager.receive()
+    # comm_manager: ClientManager = ClientManager()
+    # comm_manager.receive()
 
-    time.sleep(20)
+    time.sleep(10)
 
     cluster1 = set(list(range(1, 1001)))
     cluster2 = set(list(range(1001, 2001)))
     cluster3 = set(list(range(2001, 3001)))
 
     cluster1_servers = [1, 2, 3]
+
+    cluster1_port = 8080
 
 
     with open('transaction.csv', 'r') as file:
@@ -167,12 +186,19 @@ if __name__ == "__main__":
 
             if int(x) in cluster1 and int(y) in cluster1:
                 # intrashard cluster1
-                client = comm_manager.cluster_candidate[0][0]
+                # client = comm_manager.cluster_candidate[0][0]
                 transaction = Transaction(x, y, amount)
-                message = f"CLIENT|{object_to_txt(transaction)}"
+                # message = f"CLIENT|{object_to_txt(transaction)}"
                 print("Sent Message")
+                clientsocket1 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                clientsocket1.connect(('localhost', cluster1_port))
+                clientsocket1.send(bytes(f"CLIENT_INIT@{transaction.client_id}#CLIENT|{object_to_txt(transaction)}|@", "utf-8"))
+
+                thread = threading.Thread(target=handle, args=(clientsocket1, ))
+                thread.start()
+
                 # time.sleep(6)
-                client.send(bytes(message, "utf-8"))
+                # clientsocket1.send(bytes(message, "utf-8"))
                 
             elif x in cluster2 and y in cluster2:
                 # intrashard cluster2
@@ -182,6 +208,3 @@ if __name__ == "__main__":
                 pass
             else:
                 pass
-
-
-

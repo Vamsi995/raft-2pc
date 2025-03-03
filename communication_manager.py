@@ -1,6 +1,7 @@
 import threading
 import socket
 import time
+import random
 
 class CommunicationManager:
 
@@ -10,6 +11,8 @@ class CommunicationManager:
         self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server.bind(('localhost', 8080))
         self.server.listen()
+
+        self.clients_map = {}
 
     
     def receive(self, ):
@@ -34,7 +37,8 @@ class CommunicationManager:
         for client, candidate_num in self.client_candidate_map.items():
             if candidate_num == client_id:
                 # time.sleep(2)
-                print(client_id, message)
+                # print(client_id, message)
+
                 client.send(bytes(message, "utf-8"))
                 break
 
@@ -51,6 +55,20 @@ class CommunicationManager:
             candidate_num, piggy_back_obj = obj.split("#")
             candidate_num = int(candidate_num)
             self.send_to(piggy_back_obj, candidate_num)
+
+        elif protocol == "CLIENT_INIT":
+            client_id, piggy_back_obj = obj.split("#")            
+            self.clients_map[int(client_id)] = client
+            candidate_num = random.choice(list(self.client_candidate_map.values()))
+            self.send_to(piggy_back_obj, candidate_num)
+
+        elif protocol == "COMMITTED":
+            # print("committed")
+            client_id = int(obj)
+            out_client = self.clients_map[client_id]
+            out_client.send(bytes("Success", "utf-8"))
+            self.clients_map.pop(client_id)
+
         elif protocol == '':
             return 
 
@@ -98,8 +116,17 @@ class CommunicationManager:
             except Exception as e:
                 # print(e)
                 # Removing And Closing Clients
-                self.clients.remove(client)
-                self.client_candidate_map.pop(client)
+                if client in self.clients:
+                    self.clients.remove(client)
+                
+                if client in self.client_candidate_map:
+                    self.client_candidate_map.pop(client)
+                
+                for client_id, cl in self.clients_map.items():
+                    if cl == client:
+                        self.clients_map.pop(client_id)
+                        break
+
                 client.close()
                 break
 

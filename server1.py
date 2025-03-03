@@ -56,9 +56,20 @@ def handle_argument(request_queue, client_queue):
 
         while len(request_queue) != 0:
 
-            message, client, main_client, election_manager, piggy_back_obj = request_queue[0]
+            message, client, election_manager, piggy_back_obj = request_queue[0]
 
             if message == "CLIENT":
+
+                if election_manager.leader_id == None:
+                    pass 
+                    # what to do when there is no leader
+                
+                if election_manager.leader_id != election_manager.state_manager.candidate_id:
+                    election_manager.send_to(message, election_manager.leader_id)
+                    request_queue.popleft()
+                    continue
+                
+                print("here", piggy_back_obj)
                 client_queue.append([election_manager, piggy_back_obj])
                 # transaction: Transaction = txt_to_object(piggy_back_obj)
                 # print(transaction)
@@ -150,7 +161,7 @@ def handle_argument(request_queue, client_queue):
                             # self.persist()
             
                             # self.notify_apply()
-                            main_client.send(bytes("COMMITTED@", "utf-8"))
+                            client.send(bytes(f"COMMITTED@{append_entry_reply.transaction.client_id}@", "utf-8"))
                 else:
                     if append_entry_reply.term > current_term:
                         election_manager.state_manager.current_term = append_entry_reply.term
@@ -169,7 +180,7 @@ def handle_argument(request_queue, client_queue):
 
             request_queue.popleft()
 
-def handle(client, main_client, election_manager: ElectionManager, request_queue):
+def handle(client, election_manager: ElectionManager, request_queue):
 
     # If term > currentTerm, currentTerm ← term
     # (step down if leader or candidate)
@@ -187,7 +198,7 @@ def handle(client, main_client, election_manager: ElectionManager, request_queue
             while i < len(message_split):
                     if i + 1 > len(message_split) - 1:
                         break
-                    request_queue.append([message_split[i], client, main_client, election_manager, message_split[i + 1]])
+                    request_queue.append([message_split[i], client, election_manager, message_split[i + 1]])
                     i += 2
 
         except Exception as e:
@@ -197,59 +208,59 @@ def handle(client, main_client, election_manager: ElectionManager, request_queue
             client.close()
             break
 
-def handle_client(client, election_manager: ElectionManager):
-     while True:
-        try:
-            message = client.recv(6000).decode("utf-8")
-            print("Received client message")
+# def handle_client(client, election_manager: ElectionManager):
+#      while True:
+#         try:
+#             message = client.recv(6000).decode("utf-8")
+#             print("Received client message")
 
-            if election_manager.leader_id == None:
-                pass 
-                # what to do when there is no leader
+#             if election_manager.leader_id == None:
+#                 pass 
+#                 # what to do when there is no leader
             
-            if election_manager.leader_id != election_manager.state_manager.candidate_id:
-                election_manager.send_to(message, election_manager.leader_id)
-                continue
+#             if election_manager.leader_id != election_manager.state_manager.candidate_id:
+#                 election_manager.send_to(message, election_manager.leader_id)
+#                 continue
 
-            message, piggy_back_obj = message.split("|")
+#             message, piggy_back_obj = message.split("|")
 
-            while True:
-                # if message == "CLIENT":
-                transaction: Transaction = txt_to_object(piggy_back_obj)
-                print(transaction)
-                x, y, amount, client_id = transaction.x, transaction.y, transaction.amount, transaction.client_id
+#             while True:
+#                 # if message == "CLIENT":
+#                 transaction: Transaction = txt_to_object(piggy_back_obj)
+#                 print(transaction)
+#                 x, y, amount, client_id = transaction.x, transaction.y, transaction.amount, transaction.client_id
 
-                if election_manager.state_manager.lock_table[x] == None and election_manager.state_manager.lock_table[y] == None and election_manager.state_manager.data_manager.get_balance(x) >= amount:
+#                 if election_manager.state_manager.lock_table[x] == None and election_manager.state_manager.lock_table[y] == None and election_manager.state_manager.data_manager.get_balance(x) >= amount:
 
-                    election_manager.state_manager.lock_table[x] = client_id
-                    election_manager.state_manager.lock_table[y] = client_id
+#                     election_manager.state_manager.lock_table[x] = client_id
+#                     election_manager.state_manager.lock_table[y] = client_id
 
 
-                    print("Received client message:", message)
+#                     # print("Received client message:", message)
 
-                    # message, piggy_back_obj = message.split("|")
-                    if len(election_manager.state_manager.log_entries) == 0:
-                        election_manager.state_manager.log_entries.append(LogEntry(election_manager.state_manager.current_term, 1, transaction))
-                    else:
-                        election_manager.state_manager.log_entries.append(LogEntry(election_manager.state_manager.current_term, election_manager.state_manager.log_entries[-1].index + 1, transaction))
+#                     # message, piggy_back_obj = message.split("|")
+#                     if len(election_manager.state_manager.log_entries) == 0:
+#                         election_manager.state_manager.log_entries.append(LogEntry(election_manager.state_manager.current_term, 1, transaction))
+#                     else:
+#                         election_manager.state_manager.log_entries.append(LogEntry(election_manager.state_manager.current_term, election_manager.state_manager.log_entries[-1].index + 1, transaction))
                         
-                    election_manager.append_entries(transaction)
-                    break
+#                     election_manager.append_entries(transaction)
+#                     break
                 
-                else:
-                    # main_client.send(bytes("Transaction Aborted!"))
-                    # abort request
-                    continue
+#                 else:
+#                     # main_client.send(bytes("Transaction Aborted!"))
+#                     # abort request
+#                     continue
 
             
             
 
-        except Exception as e:
-            print(e)
-            # Removing And Closing Clients
-            self.clients.remove(client)
-            client.close()
-            break
+#         except Exception as e:
+#             print(e)
+#             # Removing And Closing Clients
+#             self.clients.remove(client)
+#             client.close()
+#             break
 
 
 def run_server(args):
@@ -271,19 +282,27 @@ def run_server(args):
     clientsocket1.connect((host, 8080))
     clientsocket1.send(bytes(f"INIT@{args.candidate_id}@", "utf-8"))
 
-    clientsocket2 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    clientsocket2.connect((host, 8081))
-    clientsocket2.send(bytes(f"INIT@{args.candidate_id}@", "utf-8"))
+    
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.bind(('localhost', 8081))
+    server.listen()
+
+    
+    
+    
+    # clientsocket2 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    # clientsocket2.connect((host, 8081))
+    # clientsocket2.send(bytes(f"INIT@{args.candidate_id}@", "utf-8"))
 
 
 
     internal_state = StateManager(args.candidate_id, args.cluster)
     election_manager = ElectionManager(internal_state, clientsocket1, )
-    thread = threading.Thread(target=handle, args=(clientsocket1, clientsocket2, election_manager, request_queue))
+    thread = threading.Thread(target=handle, args=(clientsocket1, election_manager, request_queue))
     thread.start()
 
-    thread = threading.Thread(target=handle_client, args=(clientsocket2, election_manager,))
-    thread.start()
+    # thread = threading.Thread(target=handle_client, args=(clientsocket1, election_manager,))
+    # thread.start()
     
     election_manager.start_timer()
     # clientsocket1.send(bytes("BROADCAST|testing", "utf-8"))
