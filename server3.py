@@ -12,6 +12,7 @@ from data.models.append_entries import AppendEntries, AppendEntriesReply
 # from data_manager import DataManager
 import time
 from collections import deque
+from client import Transaction
 
 
 # def receive(server):
@@ -53,13 +54,35 @@ def handle_append_entries(append_entries_queue):
             candidate_id = election_manager.state_manager.candidate_id
 
             if append_entries.transaction != None:
-                x, y = append_entries.transaction.x, append_entries.transaction.y
+                if append_entries.transaction.type == "intra_shard":
+                    x, y = append_entries.transaction.x, append_entries.transaction.y
 
-                if election_manager.state_manager.lock_table[x] != None or election_manager.state_manager.lock_table[y] != None:
-                    continue
-                else:
-                    election_manager.state_manager.lock_table[x] = append_entries.transaction.client_id
-                    election_manager.state_manager.lock_table[y] = append_entries.transaction.client_id
+                    if election_manager.state_manager.lock_table[x] != None or election_manager.state_manager.lock_table[y] != None:
+                        continue
+                    else:
+                        election_manager.state_manager.lock_table[x] = append_entries.transaction.client_id
+                        election_manager.state_manager.lock_table[y] = append_entries.transaction.client_id
+
+                elif append_entries.transaction.type == "cross_shard":
+
+                    x, y = append_entries.transaction.x, append_entries.transaction.y
+
+                    if x != 0:
+                        if election_manager.state_manager.lock_table[x] == None and election_manager.state_manager.data_manager.get_balance(x) >= append_entries.transaction.amount:
+                            election_manager.state_manager.lock_table[x] = append_entries.transaction.client_id
+                        else:
+                            client.send(bytes(f"RELAY@{append_entries.leader_id}#{"APPEND_REPLY|"}{object_to_txt(AppendEntriesReply(current_term, False, candidate_id, append_entries, transaction=append_entries.transaction, prepare_phase=False))}|@", "utf-8"))
+                            
+                
+                    elif y != 0:
+                        if election_manager.state_manager.lock_table[y] == None:
+
+                            election_manager.state_manager.lock_table[y] = append_entries.transaction.client_id
+                        else:
+                            client.send(bytes(f"RELAY@{append_entries.leader_id}#{"APPEND_REPLY|"}{object_to_txt(AppendEntriesReply(current_term, False, candidate_id, append_entries, transaction=append_entries.transaction, prepare_phase=False))}|@", "utf-8"))
+
+
+
 
             if current_term > append_entries.term:
                 client.send(bytes(f"RELAY@{append_entries.leader_id}#{"APPEND_REPLY|"}{object_to_txt(AppendEntriesReply(current_term, False, candidate_id, append_entries, transaction=append_entries.transaction))}|@", "utf-8"))
@@ -112,11 +135,12 @@ def handle_append_entries(append_entries_queue):
                 election_manager.state_manager.log_entries.append(append_entries.log_entires[j])  # Append new entries
 
             last_log_ind, last_log_term = election_manager.state_manager.get_last_log_index_term()
-            if append_entries.commit_ind > election_manager.state_manager.commit_index:
-                election_manager.state_manager.commit_index = min(append_entries.commit_ind, last_log_ind)
+
+            election_manager.state_manager.commit_index = max(election_manager.state_manager.commit_index, min(append_entries.commit_ind, append_entries.prev_log_ind + len(append_entries.log_entires)))
                 # apply_committed_entries()
-                election_manager.state_manager.persist()
-                election_manager.state_manager.apply_committed_entries()
+            election_manager.state_manager.persist()
+            election_manager.reset_timer()
+            election_manager.state_manager.apply_committed_entries()
             
             client.send(bytes(f"RELAY@{append_entries.leader_id}#{"APPEND_REPLY|"}{object_to_txt(AppendEntriesReply(current_term, True, candidate_id, append_entries, transaction=append_entries.transaction))}|@", "utf-8"))                    
 
@@ -133,9 +157,79 @@ def handle_argument(request_queue, append_entries_queue):
 
             message, client, election_manager, piggy_back_obj = request_queue[0]
 
+            if message == "COMMIT":
+                transaction: Transaction = txt_to_object(piggy_back_obj)
+                is_committed = election_manager.apply_cross_shard_entries(transaction.client_id)
+                if is_committed == True:
+                    client.send(bytes(f"CLIENT_RELAY_ACK@{transaction.client_id}#ACK_SUCCESS@", "utf-8"))
+                    
+
+            elif message == "ABORT":
+                
+                print("Abort Received")
+                
+                transaction: Transaction = txt_to_object(piggy_back_obj)
+                x, y, amount, client_id = transaction.x, transaction.y, transaction.amount, transaction.client_id
+
+                if x != 0:
+                    election_manager.state_manager.lock_table[x] = None
+                elif y != 0:
+                    election_manager.state_manager.lock_table[y] = None
+
+                print("Sending Ack")
+                client.send(bytes(f"CLIENT_RELAY_ACK@{transaction.client_id}#ACK_FAIL@", "utf-8"))
+                
 
 
-            if message == "CLIENT":
+
+            elif message == "PREPARE":
+                if election_manager.leader_id == None:
+                    pass 
+                    # what to do when there is no leader
+                
+                if election_manager.leader_id != election_manager.state_manager.candidate_id:
+                    new_message = f"PREPARE|{piggy_back_obj}"
+                    election_manager.send_to(new_message, election_manager.leader_id)
+                    request_queue.popleft()
+                    continue
+                
+                print("Received Prepare message")
+                transaction: Transaction = txt_to_object(piggy_back_obj)
+                print(transaction)
+                x, y, amount, client_id = transaction.x, transaction.y, transaction.amount, transaction.client_id
+
+                if x != 0:
+
+                    if election_manager.state_manager.lock_table[x] == None and election_manager.state_manager.data_manager.get_balance(x) >= amount:
+
+                        election_manager.state_manager.lock_table[x] = client_id
+                    else:
+                        print("Sent Client relay x")
+                        client.send(bytes(f"CLIENT_RELAY@{transaction.client_id}#PREPARE_FAIL@", "utf-8"))
+
+                
+                elif y != 0:
+                    if election_manager.state_manager.lock_table[y] == None:
+
+                        election_manager.state_manager.lock_table[y] = client_id
+                    else:
+                        print("Sent Cient Relay y")
+                        client.send(bytes(f"CLIENT_RELAY@{transaction.client_id}#PREPARE_FAIL@", "utf-8"))
+
+
+                # message, piggy_back_obj = message.split("|")
+                if len(election_manager.state_manager.log_entries) == 0:
+                    election_manager.state_manager.log_entries.append(LogEntry(election_manager.state_manager.current_term, 1, transaction))
+                else:
+                    election_manager.state_manager.log_entries.append(LogEntry(election_manager.state_manager.current_term, election_manager.state_manager.log_entries[-1].index + 1, transaction))
+                    
+                election_manager.append_entries(transaction)
+
+
+                
+
+
+            elif message == "CLIENT":
                 print("Received client message")
 
                 if election_manager.leader_id == None:
@@ -233,7 +327,8 @@ def handle_argument(request_queue, append_entries_queue):
                 #     else:
                 #         election_manager.state_manager.lock_table[x] = append_entries.transaction.client_id
                 #         election_manager.state_manager.lock_table[y] = append_entries.transaction.client_id
-
+                    current_term = election_manager.state_manager.current_term
+                    candidate_id = election_manager.state_manager.candidate_id
                     if current_term > append_entries.term:
                         client.send(bytes(f"RELAY@{append_entries.leader_id}#{"APPEND_REPLY|"}{object_to_txt(AppendEntriesReply(current_term, False, candidate_id, append_entries))}|@", "utf-8"))
                         # DPrintf("Error, Peer, I : %d DONOT write to log from master: %d, I HAVE BIG TERM MISMATCH: %d \n", rf.me, args.LeaderId, reply.Term)
@@ -283,6 +378,8 @@ def handle_argument(request_queue, append_entries_queue):
 
                     # for j in range(i, len(append_entries.log_entires)):
                     #     election_manager.state_manager.log_entries.append(append_entries.log_entires[j])  # Append new entries
+
+
 
                     last_log_ind, last_log_term = election_manager.state_manager.get_last_log_index_term()
                     if append_entries.commit_ind > election_manager.state_manager.commit_index:
@@ -375,7 +472,7 @@ def run_server(args):
     thread.start()
 
     clientsocket1 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    clientsocket1.connect((host, 8080))
+    clientsocket1.connect((host, args.port))
     clientsocket1.send(bytes(f"INIT@{args.candidate_id}@", "utf-8"))
 
 

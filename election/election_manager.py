@@ -23,8 +23,14 @@ class ElectionManager:
         self.next_ind = {}
         self.leader_id = None
         self.match_ind = {}
-        self.candidates = set(list(range(1, 4)))
+        if self.state_manager.cluster_id == 1:
+            self.candidates = set(list(range(1, 4)))
+        elif self.state_manager.cluster_id == 2:
+            self.candidates = set(list(range(4, 7)))
+        elif self.state_manager.cluster_id == 3:
+            self.candidates = set(list(range(7, 10)))
         self.candidates.remove(self.state_manager.candidate_id)
+        self.future_commit_ind = None
 
         
     def init_next_ind(self):

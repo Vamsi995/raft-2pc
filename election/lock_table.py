@@ -2,11 +2,12 @@ import pandas as pd
 
 class LockTable:
 
-    def __init__(self, cluster):
+    def __init__(self, cluster_id, candidate_id):
 
-        self.cluster_id = cluster
+        self.cluster_id = cluster_id
+        self.candidate_id = candidate_id
         self.lock_table = {}
-        self.file_path = f"/Users/vamsi/Documents/GitHub/raft-2pc/data/cluster{self.cluster_id}_server1_data.csv"
+        self.file_path = f"/Users/vamsi/Documents/GitHub/raft-2pc/data/cluster{self.cluster_id}_server{self.candidate_id}_data.csv"
         self.get_lock_ids()
     
     def get_lock_ids(self):

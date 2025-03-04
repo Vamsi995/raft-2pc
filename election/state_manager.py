@@ -38,13 +38,14 @@ class StateManager:
         self.candidate_id = candidate_id
         self.commit_index = 0
         self.last_applied = 0
+        self.last_cross_shard = 0
         self.filename = None
         # These need to be stored on disk
         self.current_term = 0
         self.voted_for = None
         self.log_entries = []
         self.cluster_id = cluster_id
-        self.lock_table = LockTable(self.cluster_id)
+        self.lock_table = LockTable(self.cluster_id, self.candidate_id)
         self.data_manager = CSVUpdater(f"/Users/vamsi/Documents/GitHub/raft-2pc/data/cluster{self.cluster_id}_server{self.candidate_id}_data.csv", self.lock_table)
         self.meta_data_file = f"/Users/vamsi/Documents/GitHub/raft-2pc/data/metadata/c{self.cluster_id}s{self.candidate_id}_metadata.json"
         self.load_from_file()
@@ -106,8 +107,23 @@ class StateManager:
         while self.last_applied < self.commit_index:
             entry: LogEntry = self.log_entries[self.last_applied]
             transaction: Transaction = entry.command
-            self.data_manager.update_cell(transaction.x, transaction.y, 'balance', transaction.amount)
+            if transaction.type == "intra_shard":
+                self.data_manager.update_cell(transaction.x, transaction.y, 'balance', transaction.amount)
             # key, value = entry.command.split("=")
             # self.state_machine[key.strip()] = value.strip()
             self.last_applied += 1
             # print(f"Node {self.node_id}: Applied {entry.command} to state machine")
+    
+    def apply_cross_shard_entries(self, client_id):
+        
+        while self.last_cross_shard < len(self.log_entries):
+            entry: LogEntry = self.log_entries[self.last_applied]
+            transaction: Transaction = entry.command
+            if transaction.type == "cross_shard" and transaction.client_id == client_id:
+                self.data_manager.update_cross_shard_cell(transaction.x, transaction.y, 'balance', transaction.amount)
+                self.last_cross_shard += 1
+                return True
+            
+            self.last_cross_shard += 1
+        
+        return False

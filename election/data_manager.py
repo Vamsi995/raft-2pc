@@ -22,7 +22,17 @@ class CSVUpdater:
         return float(df.loc[df['id'] == from_index, 'balance'].iloc[0])
         # df.loc[df['id'] == to_index, column_name] += val
         # df.to_csv(self.file_path, index=False)
-        
+    
+    def update_cross_shard_cell(self, from_index, to_index, column_name, val):
+        df = pd.read_csv(self.file_path)
+        if from_index != 0:
+            df.loc[df['id'] == from_index, column_name] -= val
+            df.to_csv(self.file_path, index=False)
+            self.lock_table[from_index] = None
+        if to_index != 0:
+            df.loc[df['id'] == to_index, column_name] += val
+            df.to_csv(self.file_path, index=False)
+            self.lock_table[to_index] = None
 
 
 

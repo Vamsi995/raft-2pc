@@ -12,7 +12,7 @@ class AppendEntries:
 
 class AppendEntriesReply:
 
-    def __init__(self, term, success, candidate_id, append_entries_request, conflict_ind=None, conflict_term=None, transaction=None):
+    def __init__(self, term, success, candidate_id, append_entries_request, conflict_ind=None, conflict_term=None, transaction=None, prepare_phase=None):
         self.term = term 
         self.success = success
         self.candidate_id = candidate_id
@@ -20,4 +20,5 @@ class AppendEntriesReply:
         self.conflict_term = conflict_term
         self.append_entries_request = append_entries_request
         self.transaction = transaction
+        self.prepare_phase = prepare_phase
         
