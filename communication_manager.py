@@ -4,6 +4,7 @@ import time
 import random
 from collections import defaultdict, deque
 import argparse
+import json
 
 class CommunicationManager:
 
@@ -18,7 +19,13 @@ class CommunicationManager:
 
         self.client_pc_ack = defaultdict(list)
         self.request_queues = defaultdict(list)
+        self.network_file = f"/Users/vamsi/Documents/GitHub/raft-2pc/data/network/c{self.cluster_id}_network.json"
+        self.network_map = self.load_from_disk()
 
+    def load_from_disk(self):
+        with open(self.network_file, "r") as file:
+            data = json.load(file)
+        return data
     
     def receive(self, ):
         while True:
@@ -35,25 +42,59 @@ class CommunicationManager:
             thread.start()
 
     def multicast(self, message):
+        self.network_map = self.load_from_disk()
 
-        for c, _ in self.client_candidate_map.items():
+        for c, c_val in self.client_candidate_map.items():
+            connected_nodes = list(self.network_map[str(c_val)].keys())
+
+            count = 0
+            for n in connected_nodes:
+                for k, val in self.network_map[n].items():
+                    if k == c_val:
+                        if val == "partition":
+                            count += 1
+            
+            if count == 2:
+                continue
+            # if self.network_map[str(from_ind)][str(client_id)] == "partition":
+            #         break
+                
+            # if isinstance(self.network_map[str(from_ind)][str(client_id)], int) or isinstance(self.network_map[str(from_ind)][str(client_id)], float):
+            #     if self.network_map[str(from_ind)][str(client_id)] > 0:
+            #         time.sleep(self.network_map[str(from_ind)][str(client_id)])
             c.send(bytes(message, "utf-8"))
 
 
-    def broadcast(self, message, client=None):
+    def broadcast(self, message, from_ind):
+        self.network_map = self.load_from_disk()
 
-        for c in self.clients:
-            if client != c: 
-                # time.sleep(1)
-                c.send(bytes(message, "utf-8"))
+        for client, candidate_id in self.client_candidate_map.items():
+            if from_ind != candidate_id:
+                if self.network_map[str(from_ind)][str(candidate_id)] == "partition":
+                    continue
+                
+                if isinstance(self.network_map[str(from_ind)][str(candidate_id)], int) or isinstance(self.network_map[str(from_ind)][str(candidate_id)], float):
+                    if self.network_map[str(from_ind)][str(candidate_id)] > 0:
+                        time.sleep(self.network_map[str(from_ind)][str(candidate_id)])
+                    # time.sleep(1)
+                # print(from_ind, str(candidate_id))
+                client.send(bytes(message, "utf-8"))
     
-    def send_to(self, message, client_id):
+    def send_to(self, message, client_id, from_ind=None):
+        self.network_map = self.load_from_disk()
         
         for client, candidate_num in self.client_candidate_map.items():
             if candidate_num == client_id:
                 # time.sleep(2)
-                # print(client_id, message)
-
+                # # print(client_id, message)
+                if from_ind != None:
+                    if self.network_map[str(from_ind)][str(client_id)] == "partition":
+                        break
+                    
+                    if isinstance(self.network_map[str(from_ind)][str(client_id)], int) or isinstance(self.network_map[str(from_ind)][str(client_id)], float):
+                        if self.network_map[str(from_ind)][str(client_id)] > 0:
+                            time.sleep(self.network_map[str(from_ind)][str(client_id)])
+                        
                 client.send(bytes(message, "utf-8"))
                 break
 
@@ -65,7 +106,8 @@ class CommunicationManager:
                 protocol, client, obj = request_queue[0]
 
                 if protocol == "BROADCAST":
-                    self.broadcast(obj, client)
+                    from_ind = self.client_candidate_map[client]
+                    self.broadcast(obj, from_ind)
 
                 elif protocol == "INIT":
                     candidate_num = int(obj)
@@ -74,7 +116,8 @@ class CommunicationManager:
                 elif protocol == "RELAY":
                     candidate_num, piggy_back_obj = obj.split("#")
                     candidate_num = int(candidate_num)
-                    self.send_to(piggy_back_obj, candidate_num)
+                    from_ind = self.client_candidate_map[client]
+                    self.send_to(piggy_back_obj, candidate_num, from_ind)
                 
                 elif protocol == "SERVER_RELAY":
                     client_id, piggy_back_obj = obj.split("#")            
@@ -84,11 +127,13 @@ class CommunicationManager:
 
 
                 elif protocol == "CLIENT_INIT":
+                    self.network_map = self.load_from_disk()
                     client_id, piggy_back_obj = obj.split("#")
                     self.clients_map[int(client_id)] = client
-                    # candidate_num = 1
+                    # candidate_num = 2
                     candidate_num = random.choice(list(self.client_candidate_map.values()))
-                    self.send_to(piggy_back_obj, candidate_num)
+                    if self.network_map['client']:
+                        self.send_to(piggy_back_obj, candidate_num)
 
                 elif protocol == "CLIENT_RELAY":
                     # print("committed")
@@ -142,20 +187,6 @@ class CommunicationManager:
                             break
                         request_queues[client].append([message_split[i], client, message_split[i + 1]])
                         i += 2
-
-                # message, piggy_back_obj = message.split("@")
-
-                # if message == "BROADCAST":
-                #     self.broadcast(piggy_back_obj, client)
-
-                # elif message == "INIT":
-                #     candidate_num = int(piggy_back_obj)
-                #     self.client_candidate_map[client] = candidate_num 
-                
-                # elif message == "RELAY":
-                #     candidate_num, piggy_back_obj = piggy_back_obj.split("#")
-                #     candidate_num = int(candidate_num)
-                #     self.send_to(piggy_back_obj, candidate_num)
 
 
             except Exception as e:

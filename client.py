@@ -41,9 +41,20 @@ class PhaseState:
     def __init__(self):
         self.is_prepare_phase = False
         self.is_commit_phase = False
+        self.is_timer_running = False
+        self.start_time = time.time()
+        self.stop_timer = False
+    
+    def stop_running_timer(self):
+        self.stop_timer = True
+    
+    def reset_timer(self):
+        self.start_time = time.time()
+    
 
 
-def prepare_monitor(thread1, thread2, client1, client2, transaction, x, y, prepare_phase, ack_messages1, ack_messages2, phase_state: PhaseState):
+
+def prepare_monitor(client1, client2, transaction, x, y, prepare_phase, ack_messages1, ack_messages2, phase_state: PhaseState):
 
     while True:
 
@@ -54,10 +65,11 @@ def prepare_monitor(thread1, thread2, client1, client2, transaction, x, y, prepa
 
             if "PREPARE_FAIL" in messages:
                 # print("prepare fail")
-                stop_and_send_abort(thread1, thread2, client1, client2, transaction, x, y)
+                stop_and_send_abort(client1, client2, transaction, x, y)
                 prepare_phase.clear()
                 phase_state.is_prepare_phase = False
                 phase_state.is_commit_phase = True
+                phase_state.stop_running_timer()
             else:
                 if len(prepare_phase) == 4:
                     # print("Sent Commit")
@@ -70,6 +82,8 @@ def prepare_monitor(thread1, thread2, client1, client2, transaction, x, y, prepa
                     prepare_phase.clear()
                     phase_state.is_prepare_phase = False
                     phase_state.is_commit_phase = True
+                    phase_state.stop_running_timer()
+
 
         
         if phase_state.is_commit_phase and len(ack_messages1) + len(ack_messages2) != 0:
@@ -94,21 +108,14 @@ def transaction_coordinator(client, prepare_phase, ack_messages, phase_state: Ph
 
         # Have a timeout for this
         if message == "PREPARE_SUCCESS":
-            reset_timer()
             if phase_state.is_prepare_phase:
-                # print(message)
                 prepare_phase.append("PREPARE_SUCCESS")
+                phase_state.reset_timer()
             
         elif message == "PREPARE_FAIL":
-            stop_timer()
             if phase_state.is_prepare_phase:
-                # print(message)
                 prepare_phase.append("PREPARE_FAIL")
-
-
-        elif message == "COMMITED":
-            print("Commit Ack received")
-            break 
+                phase_state.reset_timer()
 
         elif message == "ACK_FAIL":
             if phase_state.is_commit_phase:
@@ -131,26 +138,7 @@ def transaction_coordinator(client, prepare_phase, ack_messages, phase_state: Ph
 
 
 
-def stop_thread(thread):
-    if not thread.is_alive():
-        return
-    thread_id = thread.ident
-    print(f"Stopping thread {thread_id}")
-    
-    # Raise SystemExit inside the target thread
-    res = ctypes.pythonapi.PyThreadState_SetAsyncExc(
-        ctypes.c_long(thread_id),
-        ctypes.py_object(SystemExit)
-    )
-    if res > 1:
-        # If more than one thread was affected, revert the action
-        ctypes.pythonapi.PyThreadState_SetAsyncExc(thread_id, 0)
-        print("Failed to stop thread")
-
-start_time = time.time()
-is_timer_running = True
-
-def stop_and_send_abort(thread1, thread2, client1, client2, transaction, x, y):
+def stop_and_send_abort(client1, client2, transaction, x, y):
 
     transaction.y = 0
     client1.send(bytes(f"SERVER_RELAY@{transaction.client_id}#ABORT|{object_to_txt(transaction)}|@", "utf-8"))
@@ -159,36 +147,43 @@ def stop_and_send_abort(thread1, thread2, client1, client2, transaction, x, y):
     transaction.x = 0
     client2.send(bytes(f"SERVER_RELAY@{transaction.client_id}#ABORT|{object_to_txt(transaction)}|@", "utf-8"))
 
-def stop_timer():
-    global is_timer_running
-    is_timer_running = False
 
-def timer(thread1, thread2, client1, client2, transaction, x, y):
+def timer(phase_state: PhaseState, client1, client2, transaction, x, y):
 
-    time_limit = 5  # Timeout after 5 seconds
-    global start_time
-    start_time = time.time()
+    time_limit = 15  # Timeout after 5 seconds
+    phase_state.start_time = time.time()
 
-    global is_timer_running
-    is_timer_running = True
-    while is_timer_running:
-        elapsed_time = time.time() - start_time
-        if elapsed_time > time_limit:
-            stop_and_send_abort(thread1, thread2, client1, client2, transaction, x, y)
-            stop_timer()
-            # self.reset_timer()
-            print("Timeout occurred!")
-        
-        # Simulate some work
-        print("Working...")
-        time.sleep(5)
+    while True:
 
+        if phase_state.stop_timer == True:
+            break
 
-    pass
+        while phase_state.is_prepare_phase and phase_state.is_timer_running and phase_state.stop_timer == False:
+            elapsed_time = time.time() - phase_state.start_time
+            if elapsed_time > time_limit:
+                phase_state.is_timer_running = False
+                phase_state.stop_timer = True
+                phase_state.is_commit_phase = True
+                phase_state.is_prepare_phase = False
+                stop_and_send_abort(client1, client2, transaction, x, y)
+                print("Timeout occurred!")
+                break
+                # self.reset_timer()
+            
+            time.sleep(2)
 
-def reset_timer():
-    global start_time
-    start_time = time.time()
+        # while phase_state.is_commit_phase and phase_state.is_timer_running:
+        #     elapsed_time = time.time() - phase_state.start_time
+        #     if elapsed_time > time_limit:
+        #         stop_and_send_abort(client1, client2, transaction, x, y)
+        #         print("Timeout occurred!")
+        #         phase_state.is_timer_running = False
+        #         phase_state.stop_timer = True
+        #         break
+        #         # self.reset_timer()
+            
+        #     time.sleep(5)
+
 
 
 def handle(client):
@@ -219,6 +214,9 @@ def handle_cross_shard(x, y, amount, cluster_port1, cluster_port2):
     ack_messages2 = []
     phase_state = PhaseState()
     phase_state.is_prepare_phase = True
+    phase_state.is_timer_running = True
+
+
     transaction = Transaction(x, y, amount, 'cross_shard')
     print(f"Sent Message: {x}, {y}, {amount}")
     clientsocket1 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -239,15 +237,14 @@ def handle_cross_shard(x, y, amount, cluster_port1, cluster_port2):
     thread2 = threading.Thread(target=transaction_coordinator, args=(clientsocket2, prepare_phase, ack_messages2, phase_state, ))
     thread2.start()
 
+    thread = threading.Thread(target=prepare_monitor, args=(clientsocket1, clientsocket2, transaction, x, y, prepare_phase, ack_messages1, ack_messages2, phase_state, ))
+    thread.start()
 
-
-
-    # timer_thread = threading.Thread(target=timer, args=(thread1, thread2, clientsocket1, clientsocket2, transaction, x, y, ))
-    # timer_thread.start()
+    timer_thread = threading.Thread(target=timer, args=(phase_state, clientsocket1, clientsocket2, transaction, x, y, ))
+    timer_thread.start()
 
     
-    thread = threading.Thread(target=prepare_monitor, args=(thread1, thread2, clientsocket1, clientsocket2, transaction, x, y, prepare_phase, ack_messages1, ack_messages2, phase_state, ))
-    thread.start()
+
 
 
 def handle_intra_shard(x, y, amount, cluster_port):
