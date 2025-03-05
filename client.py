@@ -172,17 +172,17 @@ def timer(phase_state: PhaseState, client1, client2, transaction, x, y):
             
             time.sleep(2)
 
-        # while phase_state.is_commit_phase and phase_state.is_timer_running:
-        #     elapsed_time = time.time() - phase_state.start_time
-        #     if elapsed_time > time_limit:
-        #         stop_and_send_abort(client1, client2, transaction, x, y)
-        #         print("Timeout occurred!")
-        #         phase_state.is_timer_running = False
-        #         phase_state.stop_timer = True
-        #         break
-        #         # self.reset_timer()
+        while phase_state.is_commit_phase and phase_state.is_timer_running and phase_state.stop_timer == False:
+            elapsed_time = time.time() - phase_state.start_time
+            if elapsed_time > time_limit:
+                stop_and_send_abort(client1, client2, transaction, x, y)
+                print("Timeout occurred!")
+                phase_state.is_timer_running = False
+                phase_state.stop_timer = True
+                break
+                # self.reset_timer()
             
-        #     time.sleep(5)
+            time.sleep(2)
 
 
 
