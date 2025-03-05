@@ -1,5 +1,116 @@
 {
-    "current_term": 0,
+    "current_term": 2,
     "voted_for": null,
-    "log_entries": []
+    "log_entries": [
+        {
+            "term": 1,
+            "index": 1,
+            "command": {
+                "x": 0,
+                "y": 1500,
+                "amount": 1.0,
+                "type": "cross_shard",
+                "client_id": 4484013840
+            }
+        },
+        {
+            "term": 1,
+            "index": 2,
+            "command": {
+                "x": 0,
+                "y": 1600,
+                "amount": 4.0,
+                "type": "cross_shard",
+                "client_id": 4484012352
+            }
+        },
+        {
+            "term": 2,
+            "index": 3,
+            "command": {
+                "x": 0,
+                "y": 1500,
+                "amount": 1.0,
+                "type": "cross_shard",
+                "client_id": 4354414960
+            }
+        },
+        {
+            "term": 2,
+            "index": 4,
+            "command": {
+                "x": 0,
+                "y": 1600,
+                "amount": 11.0,
+                "type": "cross_shard",
+                "client_id": 4354414480
+            }
+        },
+        {
+            "term": 2,
+            "index": 5,
+            "command": {
+                "x": 0,
+                "y": 1500,
+                "amount": 1.0,
+                "type": "cross_shard",
+                "client_id": 4422788992
+            }
+        },
+        {
+            "term": 2,
+            "index": 6,
+            "command": {
+                "x": 0,
+                "y": 1600,
+                "amount": 11.0,
+                "type": "cross_shard",
+                "client_id": 4422787360
+            }
+        },
+        {
+            "term": 2,
+            "index": 7,
+            "command": {
+                "x": 0,
+                "y": 1500,
+                "amount": 1.0,
+                "type": "cross_shard",
+                "client_id": 4525548192
+            }
+        },
+        {
+            "term": 2,
+            "index": 8,
+            "command": {
+                "x": 0,
+                "y": 1600,
+                "amount": 11.0,
+                "type": "cross_shard",
+                "client_id": 4525546704
+            }
+        },
+        {
+            "term": 2,
+            "index": 9,
+            "command": {
+                "x": 0,
+                "y": 1500,
+                "amount": 1.0,
+                "type": "cross_shard",
+                "client_id": 4469925424
+            }
+        },
+        {
+            "term": 2,
+            "index": 10,
+            "command": {
+                "x": 0,
+                "y": 1600,
+                "amount": 11.0,
+                "type": "cross_shard",
+                "client_id": 4469924656
+            }
+        }
+    ]
 }

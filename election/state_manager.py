@@ -7,8 +7,8 @@ from election.lock_table import LockTable
 
 class State(Enum):
     LEADER = 1
-    FOLLOWER = 1
-    CANDIDATE = 1
+    FOLLOWER = 2
+    CANDIDATE = 3
 
 class LogEntry:
 
@@ -37,7 +37,6 @@ class StateManager:
         self.state = State.FOLLOWER
         self.candidate_id = candidate_id
         self.commit_index = 0
-        self.last_applied = 0
         self.last_cross_shard = 0
         self.filename = None
         # These need to be stored on disk
@@ -49,6 +48,8 @@ class StateManager:
         self.data_manager = CSVUpdater(f"/Users/vamsi/Documents/GitHub/raft-2pc/data/cluster{self.cluster_id}_server{self.candidate_id}_data.csv", self.lock_table)
         self.meta_data_file = f"/Users/vamsi/Documents/GitHub/raft-2pc/data/metadata/c{self.cluster_id}s{self.candidate_id}_metadata.json"
         self.load_from_file()
+        self.last_applied = len(self.log_entries)
+
 
 
     # @property
@@ -73,11 +74,11 @@ class StateManager:
         }
 
     def persist(self):
-        print(self.log_entries)
+        # print(self.log_entries)
         """Save the instance variables to a file in JSON format."""
         with open(self.meta_data_file, "w") as file:
             json.dump(self.to_dict(), file, indent=4)
-        print(f"Data saved to {self.meta_data_file}.")
+        # print(f"Data saved to {self.meta_data_file}.")
 
 
     def load_from_file(self):
@@ -117,7 +118,7 @@ class StateManager:
     def apply_cross_shard_entries(self, client_id):
         
         while self.last_cross_shard < len(self.log_entries):
-            entry: LogEntry = self.log_entries[self.last_applied]
+            entry: LogEntry = self.log_entries[self.last_cross_shard]
             transaction: Transaction = entry.command
             if transaction.type == "cross_shard" and transaction.client_id == client_id:
                 self.data_manager.update_cross_shard_cell(transaction.x, transaction.y, 'balance', transaction.amount)
@@ -127,3 +128,7 @@ class StateManager:
             self.last_cross_shard += 1
         
         return False
+
+    def get_last_log_client_id(self):
+        return self.log_entries[-1].command.client_id if len(self.log_entries) > 0 else None
+

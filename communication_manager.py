@@ -86,6 +86,7 @@ class CommunicationManager:
                 elif protocol == "CLIENT_INIT":
                     client_id, piggy_back_obj = obj.split("#")
                     self.clients_map[int(client_id)] = client
+                    # candidate_num = 1
                     candidate_num = random.choice(list(self.client_candidate_map.values()))
                     self.send_to(piggy_back_obj, candidate_num)
 
@@ -98,14 +99,18 @@ class CommunicationManager:
 
                 elif protocol == "CLIENT_RELAY_ACK":
                     client_id, piggy_back_obj = obj.split("#")
-                    if len(self.client_pc_ack[int(client_id)]) != 3:
-                        self.client_pc_ack[int(client_id)].append(piggy_back_obj)
-                        request_queue.popleft()
-                        continue
+                    out_client = self.clients_map[int(client_id)]
+                    out_client.send(bytes(piggy_back_obj, "utf-8"))
+                    # client_id, piggy_back_obj = obj.split("#")
+                    # print(self.client_pc_ack[int(client_id)], len(self.client_candidate_map))
+                    # if len(self.client_pc_ack[int(client_id)]) != len(self.client_candidate_map):
+                    #     self.client_pc_ack[int(client_id)].append(piggy_back_obj)
+                    #     request_queue.popleft()
+                    #     continue
 
-                    if len(set(self.client_pc_ack[int(client_id)])) == 1:
-                        out_client = self.clients_map[int(client_id)]
-                        out_client.send(bytes(piggy_back_obj, "utf-8"))
+                    # if len(set(self.client_pc_ack[int(client_id)])) == 1:
+                    #     out_client = self.clients_map[int(client_id)]
+                    #     out_client.send(bytes(piggy_back_obj, "utf-8"))
                         # self.clients_map.pop(client_id)
 
 

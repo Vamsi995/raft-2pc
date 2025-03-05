@@ -37,69 +37,57 @@ class Transaction:
     def from_dict(cls, dict_obj):
         return cls(dict_obj['x'], dict_obj['y'], dict_obj['amount'], dict_obj['type'], dict_obj['client_id'])
 
+class PhaseState:
+    def __init__(self):
+        self.is_prepare_phase = False
+        self.is_commit_phase = False
 
-def prepare_monitor(thread1, thread2, client1, client2, transaction, x, y, prepare_phase, ack_messages):
+
+def prepare_monitor(thread1, thread2, client1, client2, transaction, x, y, prepare_phase, ack_messages1, ack_messages2, phase_state: PhaseState):
 
     while True:
 
 
-        if len(prepare_phase) != 0:
-            # print(prepare_phase)
-            count = 0
-            for p in prepare_phase:
-                if p == "PREPARE_SUCCESS":
-                    count += 1
+        if phase_state.is_prepare_phase and len(prepare_phase) != 0:
 
-                    if count == 2:
-                        # send commit
-                        transaction.y = 0
-                        client1.send(bytes(f"SERVER_RELAY@{transaction.client_id}#COMMIT|{object_to_txt(transaction)}|@", "utf-8"))
+            messages = set(prepare_phase)
 
-                        transaction.y = y
-                        transaction.x = 0
-                        client2.send(bytes(f"SERVER_RELAY@{transaction.client_id}#COMMIT|{object_to_txt(transaction)}|@", "utf-8"))
-                        flag = 1
-                        break
-                else:
-                    print("prepare fail")
-                    stop_and_send_abort(thread1, thread2, client1, client2, transaction, x, y)
+            if "PREPARE_FAIL" in messages:
+                # print("prepare fail")
+                stop_and_send_abort(thread1, thread2, client1, client2, transaction, x, y)
+                prepare_phase.clear()
+                phase_state.is_prepare_phase = False
+                phase_state.is_commit_phase = True
+            else:
+                if len(prepare_phase) == 4:
+                    # print("Sent Commit")
+                    transaction.y = 0
+                    client1.send(bytes(f"SERVER_RELAY@{transaction.client_id}#COMMIT|{object_to_txt(transaction)}|@", "utf-8"))
+
+                    transaction.y = y
+                    transaction.x = 0
+                    client2.send(bytes(f"SERVER_RELAY@{transaction.client_id}#COMMIT|{object_to_txt(transaction)}|@", "utf-8"))
                     prepare_phase.clear()
-                    break
+                    phase_state.is_prepare_phase = False
+                    phase_state.is_commit_phase = True
 
         
-        if len(ack_messages) != 0:
-            print(ack_messages)
-            flag = 0
-            count = 0
-            neg_ack = 0
-            for m in ack_messages:
+        if phase_state.is_commit_phase and len(ack_messages1) + len(ack_messages2) != 0:
+            ack_messages = ack_messages1 + ack_messages2
+            if len(ack_messages) == 6:
+                if len(set(ack_messages)) == 1:
+                    if list(set(ack_messages))[0] == "ACK_SUCCESS":
+                        # print("2PC Succeeded")
+                        print(f"2PC Succeeded: {x}, {y}, {transaction.amount}")
 
-                if m == "ACK_SUCCESS":
-                    count += 1
-                    if count == 2:
-                    # send commit
-                        print("Succeeded 2pc")
-                        # transaction.y = 0
-                        # client1.send(bytes(f"SERVER_RELAY@{transaction.client_id}#COMMIT|{object_to_txt(transaction)}|@", "utf-8"))
-
-                        # transaction.x = 0
-                        # client2.send(bytes(f"SERVER_RELAY@{transaction.client_id}#COMMIT|{object_to_txt(transaction)}|@", "utf-8"))
-                        flag = 1
                         break
-                else:
-                    neg_ack += 1
-
-                    if neg_ack == 2:
-                        print("2pc aborted")
-                    # stop_and_send_abort(thread1, thread2, client1, client2, transaction, x, y)
-                        flag = 1 
+                    elif list(set(ack_messages))[0] == "ACK_FAIL":
+                        # print("2PC Aborted")
+                        print(f"2PC Aborted: {x}, {y}, {transaction.amount}")
                         break
 
-            if flag == 1:
-                break
 
-
-def transaction_coordinator(client, prepare_phase, ack_messages):
+def transaction_coordinator(client, prepare_phase, ack_messages, phase_state: PhaseState):
     
     while True:
         message = client.recv(6000).decode("utf-8")
@@ -107,29 +95,39 @@ def transaction_coordinator(client, prepare_phase, ack_messages):
         # Have a timeout for this
         if message == "PREPARE_SUCCESS":
             reset_timer()
-            if len(prepare_phase) == 0:
+            if phase_state.is_prepare_phase:
+                # print(message)
                 prepare_phase.append("PREPARE_SUCCESS")
             
         elif message == "PREPARE_FAIL":
             stop_timer()
-            if len(prepare_phase) == 0:
+            if phase_state.is_prepare_phase:
+                # print(message)
                 prepare_phase.append("PREPARE_FAIL")
-            # Abort transaction
+
 
         elif message == "COMMITED":
-            print("Ack received")
-            break
+            print("Commit Ack received")
+            break 
 
         elif message == "ACK_FAIL":
-            ack_messages.append("ACK_FAIL")
-            if len(ack_messages) == 2:
-                break
-            
+            if phase_state.is_commit_phase:
+                # print(message)
+                ack_messages.append("ACK_FAIL")
+                if len(ack_messages) == 3:
+                    break
+            # if len(ack_messages) == 2:
+            #     break
+        
 
         elif message == "ACK_SUCCESS":
-            ack_messages.append("ACK_SUCCESS")
-            if len(ack_messages) == 2:
-                break
+            if phase_state.is_commit_phase:
+                # print(message)
+                ack_messages.append("ACK_SUCCESS")
+                if len(ack_messages) == 3:
+                    break
+            # if len(ack_messages) == 2:
+            #     break
 
 
 
@@ -153,10 +151,7 @@ start_time = time.time()
 is_timer_running = True
 
 def stop_and_send_abort(thread1, thread2, client1, client2, transaction, x, y):
-    # stop_thread(thread1)
-    # stop_thread(thread2)
 
-    print("sending abort")
     transaction.y = 0
     client1.send(bytes(f"SERVER_RELAY@{transaction.client_id}#ABORT|{object_to_txt(transaction)}|@", "utf-8"))
 
@@ -220,9 +215,12 @@ def handle(client):
 
 def handle_cross_shard(x, y, amount, cluster_port1, cluster_port2):
     prepare_phase = []
-    ack_messages = []
+    ack_messages1 = []
+    ack_messages2 = []
+    phase_state = PhaseState()
+    phase_state.is_prepare_phase = True
     transaction = Transaction(x, y, amount, 'cross_shard')
-    print("Sent Message")
+    print(f"Sent Message: {x}, {y}, {amount}")
     clientsocket1 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     clientsocket1.connect(('localhost', cluster_port1))
     transaction.y = 0
@@ -235,10 +233,10 @@ def handle_cross_shard(x, y, amount, cluster_port1, cluster_port2):
     transaction.x = 0 
     clientsocket2.send(bytes(f"CLIENT_INIT@{transaction.client_id}#PREPARE|{object_to_txt(transaction)}|@", "utf-8"))
 
-    thread1 = threading.Thread(target=transaction_coordinator, args=(clientsocket1, prepare_phase, ack_messages, ))
+    thread1 = threading.Thread(target=transaction_coordinator, args=(clientsocket1, prepare_phase, ack_messages1, phase_state, ))
     thread1.start()
 
-    thread2 = threading.Thread(target=transaction_coordinator, args=(clientsocket2, prepare_phase, ack_messages, ))
+    thread2 = threading.Thread(target=transaction_coordinator, args=(clientsocket2, prepare_phase, ack_messages2, phase_state, ))
     thread2.start()
 
 
@@ -248,8 +246,9 @@ def handle_cross_shard(x, y, amount, cluster_port1, cluster_port2):
     # timer_thread.start()
 
     
-    thread = threading.Thread(target=prepare_monitor, args=(thread1, thread2, clientsocket1, clientsocket2, transaction, x, y, prepare_phase, ack_messages, ))
+    thread = threading.Thread(target=prepare_monitor, args=(thread1, thread2, clientsocket1, clientsocket2, transaction, x, y, prepare_phase, ack_messages1, ack_messages2, phase_state, ))
     thread.start()
+
 
 def handle_intra_shard(x, y, amount, cluster_port):
     transaction = Transaction(x, y, amount, 'intra_shard')

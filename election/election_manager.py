@@ -42,24 +42,26 @@ class ElectionManager:
         # self.reset_election_timer()
 
 
-    def leader_loop(self, leader_alive):
+    def leader_loop(self):
 
-        print("Started Leader Loop")
-        time_limit = 3  # Timeout after 5 seconds
+        time_limit = 5  # Timeout after 5 seconds
         start_time = time.time()
         self.leader_id = self.state_manager.candidate_id
+        flag = 0 
 
-        while self.leader_alive:
-            elapsed_time = time.time() - start_time
-            if elapsed_time > time_limit:
-                self.append_entries()
-                start_time = time.time()
-                # self.reset_timer()
-                print("Append Entries sent!")
-            
-            # Simulate some work
-            print("Working...")
-            time.sleep(5)
+        while True:
+            while self.leader_alive:
+                if flag == 0:
+                    print("Started Leader Loop")
+                flag = 1
+                elapsed_time = time.time() - start_time
+                if elapsed_time > time_limit:
+                    self.append_entries()
+                    start_time = time.time()
+                    # self.reset_timer()
+                    print("Append Entries sent!")
+                
+                time.sleep(5)
 
 
     def append_entries(self, transaction=None):
@@ -97,26 +99,28 @@ class ElectionManager:
                 self.state_manager.state = state
 
                 self.leader_alive = True
+                self.leader_id = self.state_manager.candidate_id
                 self.init_next_ind()
-
                 # start periodic heartbeats
-                thread = threading.Thread(target=self.leader_loop, args=(self.leader_alive,))
-                thread.start()
+
                 # thread.join()
     
 
                 # leader setup
                 # cancel timer
                 pass
-            if state == State.FOLLOWER:
+            elif state == State.FOLLOWER:
                 self.state_manager.switch_states(state)
+
         elif self.state_manager.state == State.LEADER:
             if state == State.LEADER:
                 pass
         
-            if state == State.FOLLOWER:
+            elif state == State.FOLLOWER:
+                print("Stopped Leader Loop")
                 self.leader_alive = False
-                self.start_timer()
+                print("Started Election Timer")
+                self.is_timer_running = True
         
         elif self.state_manager.state == State.FOLLOWER:
             if state == State.FOLLOWER:
@@ -131,21 +135,19 @@ class ElectionManager:
     def start_timer(self):
         """Starts a new election if no heartbeat received."""
         #Example usage
-        time_limit = 5  # Timeout after 5 seconds
+        time_limit = random.uniform(10, 20)  # Timeout after 5 seconds
         self.start_time = time.time()
-        self.is_timer_running = True
-        while self.is_timer_running:
-            elapsed_time = time.time() - self.start_time
-            if elapsed_time > time_limit:
-                self.start_election()
-                # self.reset_timer()
-                print("Timeout occurred!")
-            
-            # Simulate some work
-            print("Working...")
-            time.sleep(5)
 
-        print("Stopped Election Timer")
+        while True:
+            while self.is_timer_running:
+                elapsed_time = time.time() - self.start_time
+                if elapsed_time > time_limit:
+                    print("Timeout occurred!")
+                    self.start_election()
+                    # self.reset_timer()
+                time.sleep(2)
+
+
     
     def reset_timer(self):
         if self.start_time != None:
@@ -155,10 +157,10 @@ class ElectionManager:
         self.is_timer_running = False
 
     def start_election(self):
+        print("Election Started!")
         if self.state_manager.state == State.FOLLOWER:
-
+            
             self.state_manager.switch_states(State.CANDIDATE)
-
             # Add getter and setter for this -> these need to be stored on the disk
             self.state_manager.current_term += 1
             self.state_manager.voted_for = self.state_manager.candidate_id
