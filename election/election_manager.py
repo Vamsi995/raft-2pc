@@ -31,6 +31,10 @@ class ElectionManager:
             self.candidates = set(list(range(7, 10)))
         self.candidates.remove(self.state_manager.candidate_id)
         self.future_commit_ind = None
+        self.append_reply_timer = False
+        self.transaction = None
+        self.client = None
+        self.append_reply_timer_start_time = None
 
         
     def init_next_ind(self):
@@ -64,7 +68,10 @@ class ElectionManager:
                 time.sleep(5)
 
 
-    def append_entries(self, transaction=None):
+    def append_entries(self, client = None, transaction=None):
+
+        if client!= None and transaction != None:
+            self.start_append_entries_timer(client, transaction)
 
         for candidate_id, log_ind in self.next_ind.items():
 
@@ -95,6 +102,7 @@ class ElectionManager:
         if self.state_manager.state == State.CANDIDATE:
             if state == State.LEADER:
                 # print("I am the leader")
+                print(f"Election Won!, Leader Process Started")
                 self.cancel_timer()
                 self.state_manager.state = state
 
@@ -148,7 +156,38 @@ class ElectionManager:
                 time.sleep(2)
 
 
+    def append_entries_timer(self):
+        
+        time_limit = 10
+
+        while True:
+
+            while self.append_reply_timer:
+
+                elapsed_time = time.time() - self.append_reply_timer_start_time
+                if elapsed_time > time_limit:
+                    self.append_reply_timer = False
+                    self.client.send(bytes(f"CLIENT_RELAY@{self.transaction.client_id}#ABORT@", "utf-8"))
+                    print(f"Transaction: {self.transaction.client_id} Aborted Due to Timeout!")
+                
+                time.sleep(2)
+            
+
+
+    def stop_append_entries_timer(self):
+        print("Stop Append Entries Timer")
+        self.append_reply_timer = False
+        self.client = None
+        self.transaction = None
     
+    def start_append_entries_timer(self, client, transaction):
+        self.client = client
+        self.transaction = transaction
+        self.append_reply_timer = True
+        self.append_reply_timer_start_time = time.time()
+        print("Started Append Entries Timer")
+
+
     def reset_timer(self):
         if self.start_time != None:
             self.start_time = time.time()

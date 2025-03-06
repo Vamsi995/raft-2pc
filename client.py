@@ -54,7 +54,7 @@ class PhaseState:
 
 
 
-def prepare_monitor(client1, client2, transaction, x, y, prepare_phase, ack_messages1, ack_messages2, phase_state: PhaseState):
+def prepare_monitor(client1, client2, transaction, x, y, prepare_phase, ack_messages1, ack_messages2, phase_state: PhaseState, start_time):
 
     while True:
 
@@ -92,11 +92,13 @@ def prepare_monitor(client1, client2, transaction, x, y, prepare_phase, ack_mess
                 if len(set(ack_messages)) == 1:
                     if list(set(ack_messages))[0] == "ACK_SUCCESS":
                         # print("2PC Succeeded")
+                        calculate_latency(start_time)
                         print(f"2PC Succeeded: {x}, {y}, {transaction.amount}")
 
                         break
                     elif list(set(ack_messages))[0] == "ACK_FAIL":
                         # print("2PC Aborted")
+                        calculate_latency(start_time)
                         print(f"2PC Aborted: {x}, {y}, {transaction.amount}")
                         break
 
@@ -185,30 +187,37 @@ def timer(phase_state: PhaseState, client1, client2, transaction, x, y):
             time.sleep(2)
 
 
+def calculate_latency(start_time):
+    elapsed_time = time.time() - start_time
+    print(f"Transaction Latency: {elapsed_time}")
 
-def handle(client):
+def handle(client, start_time):
     
     while True:
         message = client.recv(6000).decode("utf-8")
-            # message, piggy_back_obj = message.split("|")
 
         if message == "COMMIT_SUCCESS":
+            calculate_latency(start_time)
             print(message)
             client.close()
             break
             
         elif message == "INSUFFICIENT_FUNDS":
+            calculate_latency(start_time)
             print(message)
             client.close()
             break
+
         elif message == "ABORT":
+            calculate_latency(start_time)
             print(message)
-            print("Abort!")
             break
         # message_split = message.split("|")
 
 
 def handle_cross_shard(x, y, amount, cluster_port1, cluster_port2):
+    
+    start_time = time.time()
     prepare_phase = []
     ack_messages1 = []
     ack_messages2 = []
@@ -237,7 +246,7 @@ def handle_cross_shard(x, y, amount, cluster_port1, cluster_port2):
     thread2 = threading.Thread(target=transaction_coordinator, args=(clientsocket2, prepare_phase, ack_messages2, phase_state, ))
     thread2.start()
 
-    thread = threading.Thread(target=prepare_monitor, args=(clientsocket1, clientsocket2, transaction, x, y, prepare_phase, ack_messages1, ack_messages2, phase_state, ))
+    thread = threading.Thread(target=prepare_monitor, args=(clientsocket1, clientsocket2, transaction, x, y, prepare_phase, ack_messages1, ack_messages2, phase_state, start_time, ))
     thread.start()
 
     timer_thread = threading.Thread(target=timer, args=(phase_state, clientsocket1, clientsocket2, transaction, x, y, ))
@@ -248,13 +257,14 @@ def handle_cross_shard(x, y, amount, cluster_port1, cluster_port2):
 
 
 def handle_intra_shard(x, y, amount, cluster_port):
+    start_time = time.time()
     transaction = Transaction(x, y, amount, 'intra_shard')
     print("Sent Message")
     clientsocket1 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     clientsocket1.connect(('localhost', cluster_port))
     clientsocket1.send(bytes(f"CLIENT_INIT@{transaction.client_id}#CLIENT|{object_to_txt(transaction)}|@", "utf-8"))
 
-    thread = threading.Thread(target=handle, args=(clientsocket1, ))
+    thread = threading.Thread(target=handle, args=(clientsocket1, start_time, ))
     thread.start()
 
 if __name__ == "__main__":

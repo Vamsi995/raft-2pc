@@ -130,8 +130,8 @@ class CommunicationManager:
                     self.network_map = self.load_from_disk()
                     client_id, piggy_back_obj = obj.split("#")
                     self.clients_map[int(client_id)] = client
-                    # candidate_num = 2
-                    candidate_num = random.choice(list(self.client_candidate_map.values()))
+                    candidate_num = 1
+                    # candidate_num = random.choice(list(self.client_candidate_map.values()))
                     if self.network_map['client']:
                         self.send_to(piggy_back_obj, candidate_num)
 
