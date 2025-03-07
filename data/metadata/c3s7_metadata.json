@@ -1,5 +1,74 @@
 {
-    "current_term": 0,
-    "voted_for": null,
-    "log_entries": []
+    "current_term": 1,
+    "voted_for": 8,
+    "log_entries": [
+        {
+            "term": 1,
+            "index": 1,
+            "command": {
+                "x": 2001,
+                "y": 2002,
+                "amount": 1.0,
+                "type": "intra_shard",
+                "client_id": 4503370256
+            }
+        },
+        {
+            "term": 1,
+            "index": 2,
+            "command": {
+                "x": 0,
+                "y": 2002,
+                "amount": 1.0,
+                "type": "cross_shard",
+                "client_id": 4474852592
+            }
+        },
+        {
+            "term": 1,
+            "index": 3,
+            "command": {
+                "x": 0,
+                "y": 2002,
+                "amount": 1.0,
+                "type": "cross_shard",
+                "client_id": 4503888640
+            }
+        },
+        {
+            "term": 1,
+            "index": 3,
+            "command": {
+                "x": 0,
+                "y": 2002,
+                "amount": 1.0,
+                "type": "cross_shard",
+                "client_id": 4503888640
+            }
+        },
+        {
+            "term": 1,
+            "index": 4,
+            "command": {
+                "x": 0,
+                "y": 2002,
+                "amount": 1.0,
+                "type": "cross_shard",
+                "client_id": 4498689776
+            }
+        },
+        {
+            "term": 1,
+            "index": 4,
+            "command": {
+                "x": 0,
+                "y": 2002,
+                "amount": 1.0,
+                "type": "cross_shard",
+                "client_id": 4498689776
+            }
+        }
+    ],
+    "last_applied": 1,
+    "last_cross_shard_applied": 3
 }

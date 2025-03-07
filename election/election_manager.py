@@ -50,7 +50,7 @@ class ElectionManager:
 
         time_limit = 5  # Timeout after 5 seconds
         start_time = time.time()
-        self.leader_id = self.state_manager.candidate_id
+        # self.leader_id = self.state_manager.candidate_id
         flag = 0 
 
         while True:
@@ -72,6 +72,8 @@ class ElectionManager:
 
         if client!= None and transaction != None:
             self.start_append_entries_timer(client, transaction)
+        
+        self.leader_id = self.state_manager.candidate_id
 
         for candidate_id, log_ind in self.next_ind.items():
 
@@ -143,7 +145,7 @@ class ElectionManager:
     def start_timer(self):
         """Starts a new election if no heartbeat received."""
         #Example usage
-        time_limit = random.uniform(10, 20)  # Timeout after 5 seconds
+        time_limit = random.uniform(10, 25)  # Timeout after 5 seconds
         self.start_time = time.time()
 
         while True:

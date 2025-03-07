@@ -4,14 +4,12 @@ import logging
 import threading
 import time
 import math
-# from communication_factory import CommunicationFactory
 from election.state_manager import StateManager, State, LogEntry
-# from data_manager import DataManager
 from election.election_manager import ElectionManager
 from utils import txt_to_object, object_to_txt
 from data.models.reply_vote import ReplyVote
 from data.models.append_entries import AppendEntries, AppendEntriesReply
-from client import Transaction
+from election.state_manager import Transaction
 from collections import deque
 from data.models.request_vote import RequestVote
 
@@ -29,14 +27,6 @@ def handle_append_entries(append_entries_queue):
 
             append_entries: AppendEntries = txt_to_object(piggy_back_obj)
 
-            # if len(append_entries.log_entires) == 0:
-            #     # heartbeat
-            #     print("Received Heartbeat")
-            #     election_manager.leader_id = append_entries.leader_id
-            #     election_manager.reset_timer() # if i am a follower or a candidate
-            #     continue
-            # else:
-            #     pass
             print(append_entries.log_entires)
             current_term = election_manager.state_manager.current_term
             candidate_id = election_manager.state_manager.candidate_id
@@ -86,8 +76,8 @@ def handle_append_entries(append_entries_queue):
                 election_manager.state_manager.voted_for = None
                 # rf.persist() -> Persist to disk
                 election_manager.state_manager.persist()
-                election_manager.switch_states(State.FOLLOWER)
 
+            election_manager.switch_states(State.FOLLOWER)
             election_manager.reset_timer()
             last_log_ind, last_log_term = election_manager.state_manager.get_last_log_index_term()
 
@@ -143,34 +133,95 @@ def handle_client_thread(client_queue):
     while True:
 
         while len(client_queue) != 0:
-            election_manager, piggy_back_obj, client = client_queue[0]
+            election_manager, piggy_back_obj, client, message = client_queue[0]
 
-            transaction: Transaction = txt_to_object(piggy_back_obj)
-            print(transaction)
-            x, y, amount, client_id = transaction.x, transaction.y, transaction.amount, transaction.client_id
+            if message == "CLIENT":
+                if election_manager.leader_id == None:
+                    continue
 
-            if election_manager.state_manager.lock_table[x] == None and election_manager.state_manager.lock_table[y] == None:
+                if election_manager.leader_id != election_manager.state_manager.candidate_id:
+                    new_message = f"CLIENT|{piggy_back_obj}"
+                    election_manager.send_to(new_message, election_manager.leader_id)
+                    client_queue.popleft()
+                    continue
 
-                election_manager.state_manager.lock_table[x] = client_id
-                election_manager.state_manager.lock_table[y] = client_id
+                transaction: Transaction = txt_to_object(piggy_back_obj)
+                x, y, amount, client_id = transaction.x, transaction.y, transaction.amount, transaction.client_id
+
+                if election_manager.state_manager.lock_table[x] == None and election_manager.state_manager.lock_table[y] == None:
+
+                    election_manager.state_manager.lock_table[x] = client_id
+                    election_manager.state_manager.lock_table[y] = client_id
 
 
-                print("Received client message:")
+                    print("Received client message:")
+
+                    # message, piggy_back_obj = message.split("|")
+                    if len(election_manager.state_manager.log_entries) == 0:
+                        election_manager.state_manager.log_entries.append(LogEntry(election_manager.state_manager.current_term, 1, transaction))
+                    else:
+                        election_manager.state_manager.log_entries.append(LogEntry(election_manager.state_manager.current_term, election_manager.state_manager.log_entries[-1].index + 1, transaction))
+                        
+                    election_manager.append_entries(client, transaction)
+                    client_queue.popleft()
+                    break
+                
+                else:
+                    # main_client.send(bytes("Transaction Aborted!"))
+                    # abort request
+                    continue
+
+            elif message == "PREPARE":
+                if election_manager.leader_id == None:
+                    continue
+                    # what to do when there is no leader
+                
+                if election_manager.leader_id != election_manager.state_manager.candidate_id:
+                    new_message = f"PREPARE|{piggy_back_obj}"
+                    election_manager.send_to(new_message, election_manager.leader_id)
+                    election_manager.reset_timer()
+                    client_queue.popleft()
+                    continue
+                
+                transaction: Transaction = txt_to_object(piggy_back_obj)
+                print(f"Received Prepare Message: {transaction.client_id}")
+                x, y, amount, client_id = transaction.x, transaction.y, transaction.amount, transaction.client_id
+
+                if x != 0:
+
+                    if election_manager.state_manager.lock_table[x] == None and election_manager.state_manager.data_manager.get_balance(x) >= amount:
+                        print(f"Acquiring Lock: {client_id} on id {x}")
+                        election_manager.state_manager.lock_table[x] = client_id
+                    else:
+                        client.send(bytes(f"CLIENT_RELAY@{transaction.client_id}#PREPARE_FAIL@", "utf-8"))
+                        client_queue.popleft()
+                        election_manager.reset_timer()
+                        print(f"Prepare Fail Message Sent")
+                        continue
+
+                
+                elif y != 0:
+                    if election_manager.state_manager.lock_table[y] == None:
+                        print(f"Acquiring Lock: {client_id} on id {y}")
+                        election_manager.state_manager.lock_table[y] = client_id
+                    else:
+                        print("Sent Cient Relay y")
+                        client.send(bytes(f"CLIENT_RELAY@{transaction.client_id}#PREPARE_FAIL@", "utf-8"))
+                        client_queue.popleft()
+                        election_manager.reset_timer()
+                        print(f"Prepare Fail Message Sent")
+                        continue
 
                 # message, piggy_back_obj = message.split("|")
                 if len(election_manager.state_manager.log_entries) == 0:
                     election_manager.state_manager.log_entries.append(LogEntry(election_manager.state_manager.current_term, 1, transaction))
                 else:
                     election_manager.state_manager.log_entries.append(LogEntry(election_manager.state_manager.current_term, election_manager.state_manager.log_entries[-1].index + 1, transaction))
-                    
+                
+                election_manager.reset_timer()
+                election_manager.state_manager.persist()
                 election_manager.append_entries(client, transaction)
                 client_queue.popleft()
-                break
-            
-            else:
-                # main_client.send(bytes("Transaction Aborted!"))
-                # abort request
-                continue
                 
 
 def handle_argument(request_queue, client_queue, append_entries_queue):
@@ -183,10 +234,11 @@ def handle_argument(request_queue, client_queue, append_entries_queue):
 
             if message == "COMMIT":
                 transaction: Transaction = txt_to_object(piggy_back_obj)
+                election_manager.reset_timer()
                 is_committed = election_manager.state_manager.apply_cross_shard_entries(transaction.client_id)
                 print(f"Received Commit Message: {transaction.client_id}")
                 if is_committed == True:
-                    client.send(bytes(f"CLIENT_RELAY_ACK@{transaction.client_id}#ACK_SUCCESS@", "utf-8"))
+                    client.send(bytes(f"CLIENT_SUCCESS_RELAY_ACK@{transaction.client_id}#ACK_SUCCESS@", "utf-8"))
                     print(f"Commit Ack Sent: {transaction.client_id}")
                     
 
@@ -196,25 +248,31 @@ def handle_argument(request_queue, client_queue, append_entries_queue):
                 print(f"Abort Message Received: {transaction.client_id}")
 
                 x, y, amount, client_id = transaction.x, transaction.y, transaction.amount, transaction.client_id
-
+                election_manager.reset_timer()
                 if x != 0:
+                    print(f"Released Lock on data ID {x}")
                     election_manager.state_manager.lock_table[x] = None
                 elif y != 0:
+                    print(f"Released Lock on data ID {y}")
                     election_manager.state_manager.lock_table[y] = None
 
-                client.send(bytes(f"CLIENT_RELAY_ACK@{transaction.client_id}#ACK_FAIL@", "utf-8"))
+                client.send(bytes(f"CLIENT_ABORT_RELAY_ACK@{transaction.client_id}#ACK_FAIL@", "utf-8"))
                 print(f"Abort Ack Sent: {transaction.client_id}")
                 
 
 
             elif message == "PREPARE":
                 if election_manager.leader_id == None:
-                    pass
+                    print(f"Leader ID is None: I will keep it in my queue")
+                    client_queue.append([election_manager, piggy_back_obj, client, message])
+                    request_queue.popleft()
+                    continue
                     # what to do when there is no leader
                 
                 if election_manager.leader_id != election_manager.state_manager.candidate_id:
                     new_message = f"PREPARE|{piggy_back_obj}"
                     election_manager.send_to(new_message, election_manager.leader_id)
+                    election_manager.reset_timer()
                     request_queue.popleft()
                     continue
                 
@@ -230,6 +288,7 @@ def handle_argument(request_queue, client_queue, append_entries_queue):
                     else:
                         client.send(bytes(f"CLIENT_RELAY@{transaction.client_id}#PREPARE_FAIL@", "utf-8"))
                         request_queue.popleft()
+                        election_manager.reset_timer()
                         print(f"Prepare Fail Message Sent")
                         continue
 
@@ -242,6 +301,7 @@ def handle_argument(request_queue, client_queue, append_entries_queue):
                         print("Sent Cient Relay y")
                         client.send(bytes(f"CLIENT_RELAY@{transaction.client_id}#PREPARE_FAIL@", "utf-8"))
                         request_queue.popleft()
+                        election_manager.reset_timer()
                         print(f"Prepare Fail Message Sent")
                         continue
 
@@ -250,21 +310,24 @@ def handle_argument(request_queue, client_queue, append_entries_queue):
                     election_manager.state_manager.log_entries.append(LogEntry(election_manager.state_manager.current_term, 1, transaction))
                 else:
                     election_manager.state_manager.log_entries.append(LogEntry(election_manager.state_manager.current_term, election_manager.state_manager.log_entries[-1].index + 1, transaction))
-                    
-                election_manager.append_entries(transaction)
+                
+                election_manager.reset_timer()
+                election_manager.state_manager.persist()
+                election_manager.append_entries(client, transaction)
 
 
             elif message == "CLIENT":
-
+                
                 if election_manager.leader_id == None:
-                    
-                    # print(f"leader id is None: {election_manager.leader_id}")
-                    pass 
-                    # what to do when there is no leader
+                    print(f"Leader ID is None: I will keep it in my queue")
+                    client_queue.append([election_manager, piggy_back_obj, client, message])
+                    request_queue.popleft()
+                    continue
                 
                 if election_manager.leader_id != election_manager.state_manager.candidate_id:
                     new_message = f"CLIENT|{piggy_back_obj}"
                     election_manager.send_to(new_message, election_manager.leader_id)
+                    election_manager.reset_timer()
                     request_queue.popleft()
                     continue
 
@@ -291,7 +354,7 @@ def handle_argument(request_queue, client_queue, append_entries_queue):
                         election_manager.append_entries(client, transaction)
 
                     else:
-                        client_queue.append([election_manager, piggy_back_obj, client])
+                        client_queue.append([election_manager, piggy_back_obj, client, message])
                 else:
                     client.send(bytes(f"CLIENT_RELAY@{transaction.client_id}#INSUFFICIENT_FUNDS@", "utf-8"))
                     print(f"Insufficient Funds for transaction: Balance: {election_manager.state_manager.data_manager.get_balance(x)}, Requested Amount: {amount}")
@@ -305,6 +368,7 @@ def handle_argument(request_queue, client_queue, append_entries_queue):
 
                 if current_term == request_vote.term and (voted_for == candidate_id or voted_for == None):
                     client.send(bytes(f"RELAY@{request_vote.candidateId}#{"REPLY_VOTE|"}{object_to_txt(ReplyVote(True, current_term, election_manager.state_manager.candidate_id))}|@", "utf-8"))
+                    election_manager.state_manager.voted_for = request_vote.candidateId
                     print(f"Vote Reply: {request_vote.candidateId}")
                     continue
                     
@@ -415,10 +479,10 @@ def handle_argument(request_queue, client_queue, append_entries_queue):
                             election_manager.state_manager.log_entries = election_manager.state_manager.log_entries[:append_entries.prev_log_index + i]  # Delete conflicting entries
                             break
 
-                    last_client_id = election_manager.state_manager.get_last_log_client_id()
 
 
                     for j in range(i, len(append_entries.log_entires)):
+                        last_client_id = election_manager.state_manager.get_last_log_client_id()
                         if last_client_id == None or last_client_id != append_entries.log_entires[j].command.client_id:
                             election_manager.state_manager.log_entries.append(append_entries.log_entires[j])  # Append new entries
 
@@ -544,7 +608,6 @@ def run_server(args):
 
     internal_state = StateManager(args.candidate_id, args.cluster)
     election_manager = ElectionManager(internal_state, clientsocket1, )
-
 
     thread = threading.Thread(target=handle, args=(clientsocket1, election_manager, request_queue))
     thread.start()

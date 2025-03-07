@@ -1,5 +1,7 @@
 {
     "current_term": 0,
     "voted_for": null,
-    "log_entries": []
+    "log_entries": [],
+    "last_applied": 0,
+    "last_cross_shard_applied": 0
 }

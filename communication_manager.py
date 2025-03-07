@@ -42,26 +42,14 @@ class CommunicationManager:
             thread.start()
 
     def multicast(self, message):
-        self.network_map = self.load_from_disk()
-
         for c, c_val in self.client_candidate_map.items():
-            connected_nodes = list(self.network_map[str(c_val)].keys())
-
-            count = 0
-            for n in connected_nodes:
-                for k, val in self.network_map[n].items():
-                    if k == c_val:
-                        if val == "partition":
-                            count += 1
-            
-            if count == 2:
-                continue
             # if self.network_map[str(from_ind)][str(client_id)] == "partition":
             #         break
                 
             # if isinstance(self.network_map[str(from_ind)][str(client_id)], int) or isinstance(self.network_map[str(from_ind)][str(client_id)], float):
             #     if self.network_map[str(from_ind)][str(client_id)] > 0:
             #         time.sleep(self.network_map[str(from_ind)][str(client_id)])
+            time.sleep(2)
             c.send(bytes(message, "utf-8"))
 
 
@@ -111,7 +99,9 @@ class CommunicationManager:
 
                 elif protocol == "INIT":
                     candidate_num = int(obj)
-                    self.client_candidate_map[client] = candidate_num 
+                    self.client_candidate_map[client] = candidate_num
+                    # request_queue.clear()
+                    # continue 
                 
                 elif protocol == "RELAY":
                     candidate_num, piggy_back_obj = obj.split("#")
@@ -121,7 +111,6 @@ class CommunicationManager:
                 
                 elif protocol == "SERVER_RELAY":
                     client_id, piggy_back_obj = obj.split("#")            
-                    print(client_id, piggy_back_obj)
                     # candidate_num = random.choice(list(self.client_candidate_map.values()))
                     self.multicast(piggy_back_obj)
 
@@ -130,8 +119,8 @@ class CommunicationManager:
                     self.network_map = self.load_from_disk()
                     client_id, piggy_back_obj = obj.split("#")
                     self.clients_map[int(client_id)] = client
-                    candidate_num = 1
-                    # candidate_num = random.choice(list(self.client_candidate_map.values()))
+                    # candidate_num = 1
+                    candidate_num = random.choice(list(self.client_candidate_map.values()))
                     if self.network_map['client']:
                         self.send_to(piggy_back_obj, candidate_num)
 
@@ -141,6 +130,12 @@ class CommunicationManager:
                     out_client = self.clients_map[int(client_id)]
                     out_client.send(bytes(piggy_back_obj, "utf-8"))
                     # self.clients_map.pop(client_id)
+
+                elif protocol == "CLIENT_ABORT_RELAY_ACK":
+                    client_id, piggy_back_obj = obj.split("#")
+                    print(int(client_id), int(client_id) in self.clients_map)
+                    out_client = self.clients_map[int(client_id)]
+                    out_client.send(bytes(piggy_back_obj, "utf-8"))
 
                 elif protocol == "CLIENT_RELAY_ACK":
                     client_id, piggy_back_obj = obj.split("#")
@@ -157,6 +152,12 @@ class CommunicationManager:
                     #     out_client = self.clients_map[int(client_id)]
                     #     out_client.send(bytes(piggy_back_obj, "utf-8"))
                         # self.clients_map.pop(client_id)
+
+                elif protocol == "CLIENT_SUCCESS_RELAY_ACK":                    
+                    client_id, piggy_back_obj = obj.split("#")
+                    print(int(client_id), int(client_id) in self.clients_map)
+                    out_client = self.clients_map[int(client_id)]
+                    out_client.send(bytes(piggy_back_obj, "utf-8"))
 
 
                 request_queue.popleft()
