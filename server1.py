@@ -219,7 +219,7 @@ def handle_client_thread(client_queue):
                     election_manager.state_manager.log_entries.append(LogEntry(election_manager.state_manager.current_term, election_manager.state_manager.log_entries[-1].index + 1, transaction))
                 
                 election_manager.reset_timer()
-                election_manager.state_manager.persist()
+                # election_manager.state_manager.persist()
                 election_manager.append_entries(client, transaction)
                 client_queue.popleft()
                 
@@ -312,7 +312,7 @@ def handle_argument(request_queue, client_queue, append_entries_queue):
                     election_manager.state_manager.log_entries.append(LogEntry(election_manager.state_manager.current_term, election_manager.state_manager.log_entries[-1].index + 1, transaction))
                 
                 election_manager.reset_timer()
-                election_manager.state_manager.persist()
+                # election_manager.state_manager.persist()
                 election_manager.append_entries(client, transaction)
 
 
@@ -350,7 +350,7 @@ def handle_argument(request_queue, client_queue, append_entries_queue):
                         else:
                             election_manager.state_manager.log_entries.append(LogEntry(election_manager.state_manager.current_term, election_manager.state_manager.log_entries[-1].index + 1, transaction))
                         
-                        election_manager.state_manager.persist()
+                        # election_manager.state_manager.persist()
                         election_manager.append_entries(client, transaction)
 
                     else:

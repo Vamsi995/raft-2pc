@@ -1,30 +1,19 @@
 {
     "current_term": 1,
-    "voted_for": 2,
+    "voted_for": 1,
     "log_entries": [
         {
             "term": 1,
             "index": 1,
             "command": {
-                "x": 1,
-                "y": 0,
+                "x": 100,
+                "y": 200,
                 "amount": 1.0,
-                "type": "cross_shard",
-                "client_id": 4503888640
-            }
-        },
-        {
-            "term": 1,
-            "index": 2,
-            "command": {
-                "x": 1,
-                "y": 0,
-                "amount": 1.0,
-                "type": "cross_shard",
-                "client_id": 4498689776
+                "type": "intra_shard",
+                "client_id": 4391517456
             }
         }
     ],
-    "last_applied": 0,
-    "last_cross_shard_applied": 1
+    "last_applied": 1,
+    "last_cross_shard_applied": 0
 }
