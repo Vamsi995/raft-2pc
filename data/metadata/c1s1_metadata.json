@@ -1,6 +1,6 @@
 {
     "current_term": 1,
-    "voted_for": 1,
+    "voted_for": 3,
     "log_entries": [
         {
             "term": 1,
@@ -8,12 +8,23 @@
             "command": {
                 "x": 100,
                 "y": 200,
-                "amount": 1.0,
+                "amount": 3.0,
                 "type": "intra_shard",
-                "client_id": 4391517456
+                "client_id": 4451322192
+            }
+        },
+        {
+            "term": 1,
+            "index": 2,
+            "command": {
+                "x": 100,
+                "y": 0,
+                "amount": 3.0,
+                "type": "cross_shard",
+                "client_id": 4458898128
             }
         }
     ],
     "last_applied": 1,
-    "last_cross_shard_applied": 0
+    "last_cross_shard_applied": 2
 }
